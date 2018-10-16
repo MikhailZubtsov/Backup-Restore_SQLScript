@@ -15,6 +15,8 @@ namespace SQLBackup
 	public partial class SQLBackup : Form
 	{
 		private string _form = "Backup";
+		private ServerRepository server_repository = new ServerRepository();
+
 		public SQLBackup()
 		{
 			InitializeComponent();
@@ -23,7 +25,7 @@ namespace SQLBackup
 		private void SQLBackup_Load(object sender, EventArgs e)
 		{
 			List<string> _servers;
-			_servers = ServerRepository.GetServers();
+			_servers = server_repository.GetServers();
 			foreach (string server in _servers) {
 				ServerName_Cb.Items.Add(server);
 			}
@@ -39,19 +41,20 @@ namespace SQLBackup
 
 		private void Backup_Click(object sender, EventArgs e)
 		{
+			string database_name = DatabaseName_Cb.Text;
+
 			if (_form == "Backup")
 			{
 				ProgressBackup.Value = 0;
 				Errors.Text = "";
 				Backup.Enabled = false;
 				Backup.BackColor = Color.Gray;
-				bool _getSchemaEntity = !OptionSchemaEntity.Checked;
-				bool _createDatabase = OptionCreateDB.Checked;
-				string _serverName = ServerName_Cb.Text;
-				string _databaseName = DatabaseName_Cb.Text;
-				string _userName = Username_Tb.Text;
-				string _password = Password_Tb.Text;
-				string _connectionString = ConnectionString_Tb.Text.Trim(' ');
+				bool get_schema_entity = !OptionSchemaEntity.Checked;
+				bool create_database = OptionCreateDB.Checked;
+				server_repository.ServerName = ServerName_Cb.Text;
+				server_repository.UserName = Username_Tb.Text;
+				server_repository.Password = Password_Tb.Text;
+				string connection_string = ConnectionString_Tb.Text.Trim(' ');
 				try
 				{
 					SaveFileDialog saveFileDialog1 = new SaveFileDialog();
@@ -69,7 +72,7 @@ namespace SQLBackup
 						Thread backgroundThread = new Thread(
 							new ThreadStart(() =>
 							{
-								string _scriptSql = ServerRepository.GetScript(_serverName, _databaseName, _userName, _password, _createDatabase, _getSchemaEntity, _connectionString);
+								string _scriptSql = server_repository.GetScript(database_name, create_database, get_schema_entity, connection_string);
 
 								if (File.Exists(_path))
 									File.Delete(_path);
@@ -117,7 +120,7 @@ namespace SQLBackup
 				Errors.Text = "";
 				try
 				{
-					List<string> messages = ServerRepository.RestoreContentInDatabase(ServerName_Cb.Text, DatabaseName_Cb.Text, FilePath.Text);
+					List<string> messages = server_repository.RestoreContentInDatabase(database_name, FilePath.Text);
 					for (int i = 0; i < messages.Count; i++)
 					{
 						if (i == 0)
@@ -187,12 +190,15 @@ namespace SQLBackup
 				}
 				else if (ConnectionString_Tb.Text.Trim(' ') != "")
 				{
-					_databases = ServerRepository.GetDatabases(ConnectionString_Tb.Text.Trim(' '));
+					_databases = server_repository.GetDatabases(ConnectionString_Tb.Text.Trim(' '));
 					StatusConnect_Tb.Text = "Complete!";
 				}
 				else
 				{
-					_databases = ServerRepository.GetDatabases(ServerName_Cb.Text, Username_Tb.Text, Password_Tb.Text);
+					server_repository.ServerName = ServerName_Cb.Text;
+					server_repository.UserName = Username_Tb.Text;
+					server_repository.Password = Password_Tb.Text;
+					_databases = server_repository.GetDatabases();
 					StatusConnect_Tb.Text = "Complete!";
 				}
 

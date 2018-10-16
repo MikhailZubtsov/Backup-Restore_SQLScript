@@ -18,95 +18,99 @@ namespace SQLBackup
 {
 	class ServerRepository
 	{
-		private string GetConnectionString(string serverName, string userName, string passwordName)
-		{
-			string _connectionString = @"Data Source=" + serverName + ";Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False";
-			if (userName.Trim(' ') != "" && passwordName.Trim(' ') != "")
-			{
-				_connectionString = String.Format(@"server={0};uid={1};pwd={2};", serverName, userName, passwordName);
-			}
+		private string sysDatabase = "sys.databases";
+		private string server_name;
+		private string user_name;
+		private string password;
 
-			return _connectionString;
+		public string ServerName
+		{
+			get {
+				return server_name;
+			}
+			set {
+				server_name = value;
+			}
 		}
 
-		static public List<string> GetServers()
+		public string UserName {
+			get {
+				return user_name;
+			}
+			set {
+				user_name = value;
+			}
+		}
+
+		public string Password {
+			get {
+				return password;
+			}
+			set {
+				password = value;
+			}
+		}
+
+		private string ConnectionString {
+			get {
+				if (string.IsNullOrEmpty(ServerName.Trim(' '))) {
+					return "";
+				}
+				if (UserName.Trim(' ') != "" && Password.Trim(' ') != "")
+				{
+					return String.Format(@"server={0};uid={1};pwd={2};", ServerName, UserName, Password);
+				}
+
+				return @"Data Source=" + ServerName + ";Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False";
+			}
+		}
+
+
+		public List<string> GetServers()
 		{
-			List<string> _serversName = new List<string>();
-			DataTable _servers = SqlDataSourceEnumerator.Instance.GetDataSources();
-			for (int i = 0; i < _servers.Rows.Count; i++)
+			List<string> servers_name = new List<string>();
+			DataTable servers = SqlDataSourceEnumerator.Instance.GetDataSources();
+			for (int i = 0; i < servers.Rows.Count; i++)
 			{
-				if ((_servers.Rows[i]["InstanceName"] as string) != null)
-					_serversName.Add(_servers.Rows[i]["ServerName"] + "\\" + _servers.Rows[i]["InstanceName"]);
+				if ((servers.Rows[i]["InstanceName"] as string) != null)
+					servers_name.Add(servers.Rows[i]["ServerName"] + "\\" + servers.Rows[i]["InstanceName"]);
 				else
-					_serversName.Add((_servers.Rows[i]["ServerName"]).ToString());
+					servers_name.Add((servers.Rows[i]["ServerName"]).ToString());
 			}
 			List<string> _localDbServers = Directory.GetDirectories(String.Format(@"C:\Users\{0}\AppData\Local\Microsoft\Microsoft SQL Server Local DB\Instances", Environment.UserName)).ToList();
 			foreach(string localDbServer in _localDbServers) {
-				_serversName.Add(@"(localdb)\" + new DirectoryInfo(localDbServer).Name);
+				servers_name.Add(@"(localdb)\" + new DirectoryInfo(localDbServer).Name);
 			}
 			//_serversName.Add(@"(localdb)\MSSQLLocalDB");
-			return _serversName;
+			return servers_name;
 		}
 
-		static public List<string> GetDatabases(string serverName, string userName, string passwordName)
+		public List<string> GetDatabases()
 		{
-			List<string> _databasesName = new List<string>();
-			ServerRepository _serverRepository = new ServerRepository();
-			string _connectionString = _serverRepository.GetConnectionString(serverName, userName, passwordName);
-			using (SqlConnection con = new SqlConnection(_connectionString))
-			{
-				con.Open();
-				using (SqlCommand cmd = new SqlCommand("SELECT name from sys.databases", con))
-				{
-					using (SqlDataReader dr = cmd.ExecuteReader())
-					{
-						while (dr.Read())
-						{
-							_databasesName.Add(dr[0].ToString());
-						}
-					}
-				}
-			}
-			return _databasesName;
+			return _getDatabases(ConnectionString);
 		}
 
-		static public List<string> GetDatabases(string connectionString)
+		public List<string> GetDatabases(string connection_string)
 		{
-			List<string> _databasesName = new List<string>();
-			using (SqlConnection con = new SqlConnection(connectionString))
-			{
-				con.Open();
-				using (SqlCommand cmd = new SqlCommand("SELECT name from sys.databases", con))
-				{
-					using (SqlDataReader dr = cmd.ExecuteReader())
-					{
-						while (dr.Read())
-						{
-							_databasesName.Add(dr[0].ToString());
-						}
-					}
-				}
-			}
-			return _databasesName;
+			return _getDatabases(connection_string);
 		}
 
 
-		static public string GetScript(string serverName, string databaseName, string userName, string password, bool createDatabase = false, bool getSchemaEntity = true, string connectionString = "")
+		public string GetScript(string databaseName, bool createDatabase = false, bool getSchemaEntity = true, string connectionString = "")
 		{
 			var _scriptSql = new StringBuilder();
-			ServerRepository _serverRepository = new ServerRepository();
 			if (createDatabase == true)
 			{
-				_scriptSql.Append(_serverRepository.ScriptCreateDataBase(serverName, databaseName, userName, password, connectionString));
+				_scriptSql.Append(_scriptCreatedDataBase(databaseName, connectionString));
 				_scriptSql.Append(String.Format("USE [{0}]" + Environment.NewLine + "GO" + Environment.NewLine, databaseName));
 			}
-			_scriptSql.Append(_serverRepository.ScriptContentDatabase(serverName, databaseName, userName, password, getSchemaEntity, connectionString));
+			_scriptSql.Append(_scriptContentDatabase(databaseName, getSchemaEntity, connectionString));
 			return _scriptSql.ToString();
 		}
 
-		static public List<string> RestoreContentInDatabase(string serverName, string databaseName, string filePath)
+		public List<string> RestoreContentInDatabase(string databaseName, string filePath)
 		{
-			string connectionString = @"Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=" + databaseName + ";Data Source=" + serverName;
+			string connectionString = @"Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=" + databaseName + ";Data Source=" + ServerName;
 			List<string> messeges = new List<string>();
 
 			string script = File.ReadAllText(filePath);
@@ -137,7 +141,7 @@ namespace SQLBackup
 		}
 
 
-		private string ScriptContentDatabase(string serverName, string databaseName, string userName, string password, bool getSchemaEntity = true, string connectionString = "")
+		private string _scriptContentDatabase(string databaseName, bool getSchemaEntity = true, string connectionString = "")
 		{
 			//List<string> _dataBaseParams = new List<string>() { "ANSI_NULLS ON", "QUOTED_IDENTIFIER ON" };
 			var _scriptSql = new StringBuilder();
@@ -148,7 +152,7 @@ namespace SQLBackup
 			}
 			else
 			{
-				_server = new Server(new ServerConnection(new SqlConnection(GetConnectionString(serverName, userName, password))));
+				_server = new Server(new ServerConnection(new SqlConnection(ConnectionString)));
 			}
 
 			var _database = _server.Databases[databaseName];
@@ -210,7 +214,7 @@ namespace SQLBackup
 			return _scriptSql.ToString();
 		}
 
-		private string ScriptCreateDataBase(string serverName, string databaseName, string userName, string password, string connectionString = "")
+		private string _scriptCreatedDataBase(string databaseName, string connectionString = "")
 		{
 			//List<string> _dataBaseParams = new List<string>() { "end", "Cyrillic_General_CI_AS", "SQL_Latin1_General_CP1_CI_AS" };
 			string _deleteString = "COLLATE Cyrillic_General_CI_AS";
@@ -222,7 +226,7 @@ namespace SQLBackup
 			}
 			else
 			{
-				_server = new Server(new ServerConnection(new SqlConnection(GetConnectionString(serverName, userName, password))));
+				_server = new Server(new ServerConnection(new SqlConnection(ConnectionString)));
 			}
 			var _database = _server.Databases[databaseName];
 			var _createDatabaseScript = _database.Script();
@@ -258,6 +262,41 @@ namespace SQLBackup
 			}
 
 			return _scriptSql.ToString();
+		}
+
+		private List<string> _getDatabases(string connection_string) {
+			List<string> _databasesName = new List<string>();
+			using (SqlConnection con = new SqlConnection(connection_string))
+			{
+				con.Open();
+				using (SqlCommand cmd = new SqlCommand("SELECT name from " + sysDatabase, con))
+				{
+					using (SqlDataReader dr = cmd.ExecuteReader())
+					{
+						while (dr.Read())
+						{
+							_databasesName.Add(dr[0].ToString());
+						}
+					}
+				}
+			}
+			return _databasesName;
+		}
+
+		public ServerRepository(string server_name, string user_name, string password) {
+			ServerName = server_name;
+			UserName = user_name;
+			Password = password;
+		}
+
+		public ServerRepository(string server_name)
+		{
+			ServerName = server_name;
+		}
+
+		public ServerRepository()
+		{
+
 		}
 	}
 }
